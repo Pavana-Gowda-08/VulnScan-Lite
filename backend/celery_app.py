@@ -9,6 +9,14 @@ REDIS_URL = os.getenv(
     "redis://127.0.0.1:6379/0"
 )
 
+# Upstash Redis uses rediss:// (TLS)
+if REDIS_URL.startswith("rediss://"):
+    REDIS_URL = REDIS_URL + (
+        "&ssl_cert_reqs=CERT_REQUIRED"
+        if "?" in REDIS_URL
+        else "?ssl_cert_reqs=CERT_REQUIRED"
+    )
+
 celery = Celery(
     "vulnscan",
     broker=REDIS_URL,
