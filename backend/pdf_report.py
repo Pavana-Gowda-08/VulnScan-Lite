@@ -18,43 +18,41 @@ from reportlab.platypus import (
 )
 
 
-# ============================================================
-# PDF REPORT
-# ============================================================
-
 def make_pdf(scan):
 
     buffer = BytesIO()
 
-    # A4 page
-    # 15 mm margins leave enough usable width
+    # =========================================================
+    # PAGE
+    # =========================================================
+
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        leftMargin=15 * mm,
-        rightMargin=15 * mm,
-        topMargin=15 * mm,
+        leftMargin=12 * mm,
+        rightMargin=12 * mm,
+        topMargin=12 * mm,
         bottomMargin=15 * mm,
-        title="VulnScan Lite Security Report",
+        title="VulnScan Lite Security Health Report",
     )
 
-    # ========================================================
+    # =========================================================
     # STYLES
-    # ========================================================
+    # =========================================================
 
     styles = getSampleStyleSheet()
 
     title_style = ParagraphStyle(
-        "VulnScanTitle",
+        "ReportTitle",
         parent=styles["Title"],
         alignment=TA_CENTER,
-        fontSize=18,
-        leading=22,
-        spaceAfter=10,
+        fontSize=17,
+        leading=21,
+        spaceAfter=8,
     )
 
     heading_style = ParagraphStyle(
-        "VulnScanHeading",
+        "ReportHeading",
         parent=styles["Heading2"],
         fontSize=12,
         leading=15,
@@ -63,125 +61,105 @@ def make_pdf(scan):
     )
 
     normal_style = ParagraphStyle(
-        "VulnScanNormal",
+        "ReportNormal",
         parent=styles["Normal"],
         fontSize=9,
         leading=12,
     )
 
     cell_style = ParagraphStyle(
-        "VulnScanCell",
+        "ReportCell",
         parent=styles["Normal"],
-        fontSize=8,
-        leading=10,
+        fontSize=7.5,
+        leading=9.5,
         wordWrap="LTR",
+        splitLongWords=True,
     )
 
     header_style = ParagraphStyle(
-        "VulnScanHeader",
+        "ReportHeader",
         parent=cell_style,
         fontName="Helvetica-Bold",
+        fontSize=7.5,
+        leading=9,
     )
 
     small_style = ParagraphStyle(
-        "VulnScanSmall",
+        "ReportSmall",
         parent=styles["Normal"],
-        fontSize=8,
+        fontSize=7.5,
         leading=10,
+    )
+
+    remediation_style = ParagraphStyle(
+        "Remediation",
+        parent=styles["Normal"],
+        fontSize=8.5,
+        leading=11,
+        wordWrap="LTR",
+        splitLongWords=True,
     )
 
     story = []
 
-    # ========================================================
+    # =========================================================
     # TITLE
-    # ========================================================
+    # =========================================================
 
     story.append(
         Paragraph(
-            "VulnScan Lite - Security Scan Report",
+            "VulnScan Lite - Security Health Report",
             title_style,
         )
     )
 
-    story.append(
-        Spacer(
-            1,
-            4 * mm,
-        )
+    # =========================================================
+    # BASIC INFORMATION
+    # =========================================================
+
+    target = str(
+        scan.get("url", "")
     )
 
-    # ========================================================
-    # SCAN INFORMATION
-    # ========================================================
-
-    url = scan.get(
-        "url",
-        "",
+    score = str(
+        scan.get("score", "")
     )
 
-    status = scan.get(
-        "status",
-        "",
+    grade = str(
+        scan.get("grade", "")
     )
 
-    score = scan.get(
-        "score",
-        "",
-    )
-
-    grade = scan.get(
-        "grade",
-        "",
+    status = str(
+        scan.get("status", "")
     )
 
     info_data = [
         [
+            Paragraph("<b>Target</b>", cell_style),
+            Paragraph(target, cell_style),
+        ],
+        [
+            Paragraph("<b>Score</b>", cell_style),
             Paragraph(
-                "<b>Target URL</b>",
-                cell_style,
-            ),
-            Paragraph(
-                str(url),
+                f"{score}/100",
                 cell_style,
             ),
         ],
         [
-            Paragraph(
-                "<b>Status</b>",
-                cell_style,
-            ),
-            Paragraph(
-                str(status),
-                cell_style,
-            ),
+            Paragraph("<b>Grade</b>", cell_style),
+            Paragraph(grade, cell_style),
         ],
         [
-            Paragraph(
-                "<b>Security Score</b>",
-                cell_style,
-            ),
-            Paragraph(
-                str(score),
-                cell_style,
-            ),
-        ],
-        [
-            Paragraph(
-                "<b>Grade</b>",
-                cell_style,
-            ),
-            Paragraph(
-                str(grade),
-                cell_style,
-            ),
+            Paragraph("<b>Status</b>", cell_style),
+            Paragraph(status, cell_style),
         ],
     ]
 
     info_table = Table(
         info_data,
         colWidths=[
-            40 * mm,
-            135 * mm,
+            32 * mm,
+            148 * mm,
         ],
     )
 
@@ -240,13 +218,13 @@ def make_pdf(scan):
     story.append(
         Spacer(
             1,
-            8 * mm,
+            7 * mm,
         )
     )
 
-    # ========================================================
-    # RESULT JSON
-    # ========================================================
+    # =========================================================
+    # LOAD RESULT JSON
+    # =========================================================
 
     result_json = scan.get(
         "result_json"
@@ -276,9 +254,9 @@ def make_pdf(scan):
 
             result = {}
 
-    # ========================================================
+    # =========================================================
     # SECURITY CHECKS
-    # ========================================================
+    # =========================================================
 
     story.append(
         Paragraph(
@@ -287,34 +265,29 @@ def make_pdf(scan):
         )
     )
 
-    checks = []
-
-    if isinstance(
-        result,
-        dict,
-    ):
-
-        checks = result.get(
-            "checks",
-            [],
-        )
+    checks = result.get(
+        "checks",
+        [],
+    )
 
     if not isinstance(
         checks,
         list,
     ):
-
         checks = []
 
-    # Header row
+    # ---------------------------------------------------------
+    # TABLE HEADER
+    # ---------------------------------------------------------
+
     table_data = [
         [
             Paragraph(
-                "Check",
+                "Status",
                 header_style,
             ),
             Paragraph(
-                "Status",
+                "Check",
                 header_style,
             ),
             Paragraph(
@@ -322,11 +295,15 @@ def make_pdf(scan):
                 header_style,
             ),
             Paragraph(
-                "Evidence / Recommendation",
+                "Evidence",
                 header_style,
             ),
         ]
     ]
+
+    # ---------------------------------------------------------
+    # CHECK ROWS
+    # ---------------------------------------------------------
 
     for check in checks:
 
@@ -357,66 +334,56 @@ def make_pdf(scan):
             "",
         )
 
-        # Some scanners use different names
         evidence = check.get(
             "evidence",
-            "",
+            check.get(
+                "description",
+                "",
+            ),
         )
 
-        recommendation = check.get(
-            "recommendation",
-            "",
+        # -----------------------------------------------------
+        # Convert everything to safe strings
+        # -----------------------------------------------------
+
+        status_text = str(
+            check_status
         )
 
-        description = check.get(
-            "description",
-            "",
+        name_text = str(
+            name
         )
 
-        # Combine useful information
-        evidence_parts = []
-
-        if evidence:
-            evidence_parts.append(
-                f"<b>Evidence:</b> {evidence}"
-            )
-
-        if recommendation:
-            evidence_parts.append(
-                f"<b>Recommendation:</b> {recommendation}"
-            )
-
-        if description:
-            evidence_parts.append(
-                f"<b>Description:</b> {description}"
-            )
-
-        evidence_text = "<br/>".join(
-            evidence_parts
+        severity_text = str(
+            severity
         )
 
-        if not evidence_text:
-            evidence_text = "No additional information."
+        evidence_text = str(
+            evidence
+        )
 
+        # -----------------------------------------------------
         # IMPORTANT:
         # Every cell is a Paragraph.
-        # This makes long sentences wrap automatically.
+        # Long URLs, headers and sentences wrap.
+        # -----------------------------------------------------
+
         table_data.append(
             [
                 Paragraph(
-                    str(name),
+                    status_text,
                     cell_style,
                 ),
                 Paragraph(
-                    str(check_status),
+                    name_text,
                     cell_style,
                 ),
                 Paragraph(
-                    str(severity),
+                    severity_text,
                     cell_style,
                 ),
                 Paragraph(
-                    str(evidence_text),
+                    evidence_text,
                     cell_style,
                 ),
             ]
@@ -426,6 +393,10 @@ def make_pdf(scan):
 
         table_data.append(
             [
+                Paragraph(
+                    "N/A",
+                    cell_style,
+                ),
                 Paragraph(
                     "No checks available",
                     cell_style,
@@ -438,29 +409,37 @@ def make_pdf(scan):
                     "",
                     cell_style,
                 ),
-                Paragraph(
-                    "",
-                    cell_style,
-                ),
             ]
         )
 
-    # ========================================================
+    # =========================================================
     # SECURITY CHECK TABLE
-    # ========================================================
+    # =========================================================
 
-    # Total = 175 mm.
-    # This fits inside the A4 page with 15 mm margins.
+    # A4 width = 210 mm
+    #
+    # Margins:
+    # 12 mm + 12 mm
+    #
+    # Available:
+    # 186 mm
+    #
+    # Columns:
+    # 20 + 38 + 25 + 103 = 186 mm
+    #
+    # Therefore NOTHING goes outside the page.
+
     results_table = Table(
         table_data,
         colWidths=[
-            30 * mm,
+            20 * mm,
+            38 * mm,
             25 * mm,
-            25 * mm,
-            95 * mm,
+            103 * mm,
         ],
         repeatRows=1,
         splitByRow=True,
+        hAlign="LEFT",
     )
 
     results_table.setStyle(
@@ -473,36 +452,42 @@ def make_pdf(scan):
                     0.5,
                     colors.grey,
                 ),
+
                 (
                     "BACKGROUND",
                     (0, 0),
                     (-1, 0),
                     colors.lightgrey,
                 ),
+
                 (
                     "VALIGN",
                     (0, 0),
                     (-1, -1),
                     "TOP",
                 ),
+
                 (
                     "LEFTPADDING",
                     (0, 0),
                     (-1, -1),
                     4,
                 ),
+
                 (
                     "RIGHTPADDING",
                     (0, 0),
                     (-1, -1),
                     4,
                 ),
+
                 (
                     "TOPPADDING",
                     (0, 0),
                     (-1, -1),
                     5,
                 ),
+
                 (
                     "BOTTOMPADDING",
                     (0, 0),
@@ -517,45 +502,96 @@ def make_pdf(scan):
         results_table
     )
 
-    # ========================================================
-    # ERROR
-    # ========================================================
+    # =========================================================
+    # REMEDIATION
+    # =========================================================
 
-    error = scan.get(
-        "error"
+    remediation = result.get(
+        "remediation",
+        "",
     )
 
-    if error:
+    # Some versions of the scanner may use recommendations
+    if not remediation:
+
+        remediation = result.get(
+            "recommendation",
+            "",
+        )
+
+    # If remediation is a list
+    if isinstance(
+        remediation,
+        list,
+    ):
+
+        remediation_text = "<br/><br/>".join(
+            str(item)
+            for item in remediation
+        )
+
+    else:
+
+        remediation_text = str(
+            remediation
+        )
+
+    if remediation_text:
 
         story.append(
             Spacer(
                 1,
-                8 * mm,
+                7 * mm,
             )
         )
 
         story.append(
             Paragraph(
-                "Scan Error",
+                "Remediation",
                 heading_style,
             )
         )
 
+        # This is also a Paragraph,
+        # so long remediation text wraps.
         story.append(
             Paragraph(
-                str(error),
-                normal_style,
+                remediation_text,
+                remediation_style,
             )
         )
 
-    # ========================================================
-    # FOOTER
-    # ========================================================
+    # =========================================================
+    # DISCLAIMER
+    # =========================================================
 
     story.append(
         Spacer(
             1,
-            10 * mm,
+            7 * mm,
+        )
+    )
+
+    disclaimer = (
+        "Only scan websites you own or are authorized "
+        "to assess. Passive analysis only."
+    )
+
+    story.append(
+        Paragraph(
+            disclaimer,
+            small_style,
+        )
+    )
+
+    # =========================================================
+    # FOOTER
+    # =========================================================
+
+    story.append(
+        Spacer(
+            1,
+            5 * mm,
         )
     )
 
@@ -566,15 +602,14 @@ def make_pdf(scan):
         )
     )
 
-    # ========================================================
-    # GENERATE
-    # ========================================================
+    # =========================================================
+    # BUILD PDF
+    # =========================================================
 
     doc.build(
         story
     )
 
-    # Return raw PDF bytes
     buffer.seek(0)
 
     return buffer.getvalue()
