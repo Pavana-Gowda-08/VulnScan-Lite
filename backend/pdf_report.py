@@ -256,7 +256,7 @@ def make_pdf(result):
                     (0, 0),
                     (-1, -1),
                     0.4,
-                    colors.grey
+                    colors.white
                 ),
 
                 # Top alignment
