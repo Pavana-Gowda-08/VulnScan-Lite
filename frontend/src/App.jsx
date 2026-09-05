@@ -252,9 +252,8 @@ export default function App() {
       if (register) {
 
         /*
-          If an older user session exists,
-          clear it before creating the
-          new account.
+          Clear any previous account
+          session before registration.
         */
 
         try {
@@ -267,15 +266,13 @@ export default function App() {
           );
 
         } catch {
-          /*
-            Continue registration even if
-            there was no active session.
-          */
+          // Continue registration.
         }
 
 
         /*
-          Clear old user's frontend data.
+          Clear previous account's
+          frontend data.
         */
 
         setUser(null);
@@ -302,11 +299,9 @@ export default function App() {
 
         /*
           Registration does not automatically
-          log the user in.
+          log the new user in.
 
-          Return to the login screen so the
-          new account can establish its own
-          authenticated session.
+          Return to login mode.
         */
 
         setRegister(false);
@@ -340,8 +335,7 @@ export default function App() {
 
 
       /*
-        Login creates the new authenticated
-        session on the backend.
+        Set the newly authenticated user.
       */
 
       setUser(
@@ -350,9 +344,9 @@ export default function App() {
 
 
       /*
-        Clear any previous frontend scan
-        and history state before loading
-        the newly logged-in user's data.
+        Clear any previous frontend
+        account data before loading
+        the new user's history.
       */
 
       setScan(null);
@@ -360,8 +354,8 @@ export default function App() {
 
 
       /*
-        Load history only AFTER successful
-        login.
+        Load history belonging to
+        the newly logged-in user.
       */
 
       await loadHistory();
@@ -397,17 +391,13 @@ export default function App() {
 
     /*
       Clear all account-specific
-      frontend state.
+      frontend data.
     */
 
     setUser(null);
     setScan(null);
     setHistory([]);
     setError("");
-
-    /*
-      Return to login mode.
-    */
 
     setRegister(false);
   }
@@ -748,15 +738,13 @@ export default function App() {
             onClick={() => {
 
               /*
-                Clear registration/login
-                messages and old frontend
+                Clear messages and
+                account-specific frontend
                 data when switching modes.
               */
 
               setError("");
-
               setScan(null);
-
               setHistory([]);
 
               setRegister(
@@ -1178,13 +1166,23 @@ export default function App() {
               <tbody>
 
                 {history.map(
-                  {scanItem,index} => (
+                  (scanItem, index) => (
 
                     <tr
                       key={
                         scanItem.id
                       }
                     >
+
+                      {/* 
+                        Display a user-specific
+                        serial number.
+
+                        IMPORTANT:
+                        scanItem.id is still used
+                        internally as the real
+                        PostgreSQL scan ID.
+                      */}
 
                       <td>
                         {index + 1}
