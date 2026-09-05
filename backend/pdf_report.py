@@ -237,7 +237,7 @@ def make_pdf(result):
                     "BACKGROUND",
                     (0, 0),
                     (-1, 0),
-                    colors.white(
+                    colors.HexColor(
                         "#1f2937"
                     )
                 ),
