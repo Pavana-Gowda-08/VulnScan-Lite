@@ -2,21 +2,9 @@ import io
 import json
 import os
 
-from dotenv import load_dotenv
-
-from flask import (
-    Flask,
-    request,
-    jsonify,
-    session,
-    send_file,
-)
-
+from flask import Flask, jsonify, request, session, send_file
 from flask_cors import CORS
-
 from werkzeug.security import check_password_hash
-
-from celery_app import celery
 
 from db import (
     init_db,
@@ -28,33 +16,23 @@ from db import (
 )
 
 from tasks import run_scan
-
 from pdf_report import make_pdf
 
 
 # ============================================================
-# ENVIRONMENT
-# ============================================================
-
-load_dotenv()
-
-
-# ============================================================
-# FLASK APP
+# FLASK APPLICATION
 # ============================================================
 
 app = Flask(__name__)
 
-
 app.secret_key = os.getenv(
     "SECRET_KEY",
-    "dev-only-secret",
+    "change-this-secret-key-in-production"
 )
 
 
 # ============================================================
 # SESSION CONFIGURATION
-# Required for Vercel frontend -> Railway backend cookies
 # ============================================================
 
 app.config.update(
@@ -64,21 +42,16 @@ app.config.update(
 
 
 # ============================================================
-# CORS CONFIGURATION
+# CORS
 # ============================================================
 
 frontend_origin = os.getenv(
     "FRONTEND_ORIGIN",
-    "http://localhost:5173",
+    "http://localhost:5173"
 ).strip().rstrip("/")
 
+allowed_origins = [frontend_origin]
 
-allowed_origins = [
-    frontend_origin,
-]
-
-
-# Allow local Vite development in addition to production
 if "http://localhost:5173" not in allowed_origins:
     allowed_origins.append("http://localhost:5173")
 
@@ -86,7 +59,7 @@ if "http://localhost:5173" not in allowed_origins:
 CORS(
     app,
     supports_credentials=True,
-    origins=allowed_origins,
+    origins=allowed_origins
 )
 
 
@@ -94,488 +67,406 @@ CORS(
 # DATABASE INITIALIZATION
 # ============================================================
 
-init_db()
+try:
+    init_db()
+except Exception as e:
+    print("DATABASE INITIALIZATION ERROR:", e)
 
 
 # ============================================================
 # HOME
 # ============================================================
 
-@app.get("/")
+@app.route("/")
 def home():
-
-    return jsonify(
-        {
-            "ok": True,
-            "service": "VulnScan Lite",
-            "message": "Backend is running",
-        }
-    )
+    return jsonify({
+        "service": "VulnScan Lite",
+        "description": "On-Demand Web Vulnerability Scanner",
+        "mode": "Passive security analysis",
+        "status": "online",
+        "disclaimer": (
+            "Only scan websites you own or are authorized to assess. "
+            "This tool performs passive analysis only."
+        )
+    })
 
 
 # ============================================================
 # HEALTH CHECK
 # ============================================================
 
-@app.get("/api/health")
+@app.route("/api/health")
 def health():
-
-    return jsonify(
-        {
-            "ok": True,
-            "service": "VulnScan Lite",
-        }
-    )
-
-
-# ============================================================
-# CURRENT USER
-# ============================================================
-
-def current_user():
-
-    return session.get("user_id")
+    return jsonify({
+        "ok": True,
+        "service": "VulnScan Lite"
+    })
 
 
 # ============================================================
 # REGISTER
 # ============================================================
 
-@app.post("/api/auth/register")
+@app.route("/api/auth/register", methods=["POST"])
 def register():
 
-    data = (
-        request.get_json(silent=True)
-        or {}
-    )
+    data = request.get_json(silent=True) or {}
 
-    email = (
-        data.get("email", "")
-        .strip()
-        .lower()
-    )
+    email = str(data.get("email", "")).strip().lower()
+    password = str(data.get("password", ""))
 
-    password = data.get(
-        "password",
-        "",
-    )
+    if not email or not password:
+        return jsonify({
+            "error": "Email and password are required"
+        }), 400
 
-    if (
-        "@" not in email
-        or len(password) < 8
-    ):
-
-        return jsonify(
-            {
-                "error": (
-                    "Enter a valid email "
-                    "and password of at least "
-                    "8 characters."
-                )
-            }
-        ), 400
+    if len(password) < 6:
+        return jsonify({
+            "error": "Password must contain at least 6 characters"
+        }), 400
 
     try:
+        user_id = create_user(email, password)
 
-        user_id = create_user(
-            email,
-            password,
-        )
-
-    except Exception as exc:
-
-        print(
-            "REGISTER ERROR:",
-            repr(exc),
-        )
-
-        return jsonify(
-            {
-                "error": (
-                    "Email already registered."
-                )
-            }
-        ), 409
-
-    session["user_id"] = user_id
-
-    return jsonify(
-        {
+        return jsonify({
+            "message": "Registration successful",
             "user": {
                 "id": user_id,
-                "email": email,
+                "email": email
             }
-        }
-    ), 201
+        }), 201
+
+    except Exception as e:
+
+        print("REGISTER ERROR:", e)
+
+        return jsonify({
+            "error": "Email may already be registered"
+        }), 400
 
 
 # ============================================================
 # LOGIN
 # ============================================================
 
-@app.post("/api/auth/login")
+@app.route("/api/auth/login", methods=["POST"])
 def login():
 
-    data = (
-        request.get_json(silent=True)
-        or {}
-    )
+    data = request.get_json(silent=True) or {}
 
-    email = (
-        data.get("email", "")
-        .strip()
-        .lower()
-    )
-
-    password = data.get(
-        "password",
-        "",
-    )
+    email = str(data.get("email", "")).strip().lower()
+    password = str(data.get("password", ""))
 
     if not email or not password:
-
-        return jsonify(
-            {
-                "error": "Email and password are required."
-            }
-        ), 400
+        return jsonify({
+            "error": "Email and password are required"
+        }), 400
 
     try:
 
         user = get_user(email)
 
-    except Exception as exc:
+        if not user:
+            return jsonify({
+                "error": "Invalid email or password"
+            }), 401
 
-        print(
-            "LOGIN DATABASE ERROR:",
-            repr(exc),
-        )
-
-        return jsonify(
-            {
-                "error": "Database connection error."
-            }
-        ), 500
-
-    if (
-        not user
-        or not check_password_hash(
+        if not check_password_hash(
             user["password_hash"],
-            password,
-        )
-    ):
+            password
+        ):
+            return jsonify({
+                "error": "Invalid email or password"
+            }), 401
 
-        return jsonify(
-            {
-                "error": "Invalid credentials."
-            }
-        ), 401
+        session.clear()
 
-    # Create authenticated session
-    session["user_id"] = user["id"]
+        session["user_id"] = user["id"]
+        session["user_email"] = user["email"]
 
-    return jsonify(
-        {
+        return jsonify({
+            "message": "Login successful",
             "user": {
                 "id": user["id"],
-                "email": user["email"],
+                "email": user["email"]
             }
-        }
-    )
+        })
+
+    except Exception as e:
+
+        print("LOGIN ERROR:", e)
+
+        return jsonify({
+            "error": "Login failed"
+        }), 500
 
 
 # ============================================================
 # LOGOUT
 # ============================================================
 
-@app.post("/api/auth/logout")
+@app.route("/api/auth/logout", methods=["POST"])
 def logout():
 
     session.clear()
 
-    return jsonify(
-        {
-            "ok": True,
-        }
-    )
+    return jsonify({
+        "message": "Logged out successfully"
+    })
 
 
 # ============================================================
-# AUTHENTICATED USER
+# CURRENT USER
 # ============================================================
 
-@app.get("/api/auth/me")
-def me():
+@app.route("/api/auth/me")
+def current_user():
 
-    user_id = current_user()
+    user_id = session.get("user_id")
 
     if not user_id:
+        return jsonify({
+            "user": None
+        })
 
-        return jsonify(
-            {
-                "user": None,
-            }
-        )
-
-    user = None
-
-    try:
-
-        # Get complete user information
-        with_user = None
-
-        # get_user expects email, so we only return
-        # the authenticated user ID here.
-        user = {
+    return jsonify({
+        "user": {
             "id": user_id,
+            "email": session.get("user_email")
         }
-
-    except Exception:
-        user = {
-            "id": user_id,
-        }
-
-    return jsonify(
-        {
-            "user": user,
-        }
-    )
+    })
 
 
 # ============================================================
 # START SCAN
 # ============================================================
 
-@app.post("/api/scan")
+@app.route("/api/scan", methods=["POST"])
 def start_scan():
 
-    user_id = current_user()
+    user_id = session.get("user_id")
 
     if not user_id:
+        return jsonify({
+            "error": "Unauthorized"
+        }), 401
 
-        return jsonify(
-            {
-                "error": "Login required.",
-            }
-        ), 401
+    data = request.get_json(silent=True) or {}
 
-    data = (
-        request.get_json(silent=True)
-        or {}
-    )
-
-    url = (
-        data.get("url", "")
-        .strip()
-    )
+    url = str(data.get("url", "")).strip()
 
     if not url:
+        return jsonify({
+            "error": "URL is required"
+        }), 400
 
-        return jsonify(
-            {
-                "error": "URL is required.",
-            }
-        ), 400
+    # Basic URL validation.
+    if not (
+        url.startswith("http://")
+        or url.startswith("https://")
+    ):
+        url = "https://" + url
 
     try:
 
         scan_id = create_scan(
             user_id,
-            url,
+            url
         )
 
+        # Queue asynchronous scan.
         task = run_scan.delay(
             scan_id,
-            url,
+            url
         )
 
-    except Exception as exc:
-
-        print(
-            "SCAN START ERROR:",
-            repr(exc),
-        )
-
-        return jsonify(
-            {
-                "error": (
-                    "Unable to start scan."
-                )
-            }
-        ), 500
-
-    return jsonify(
-        {
+        return jsonify({
             "scan_id": scan_id,
-            "task_id": task.id,
             "status": "QUEUED",
-        }
-    ), 202
+            "task_id": task.id,
+            "message": "Scan queued successfully"
+        }), 202
+
+    except Exception as e:
+
+        print("SCAN START ERROR:", e)
+
+        return jsonify({
+            "error": "Unable to start scan",
+            "details": str(e)
+        }), 500
 
 
 # ============================================================
 # SCAN STATUS
+# Frontend polls this endpoint every 2 seconds.
 # ============================================================
 
-@app.get(
-    "/api/scan/<int:scan_id>/status"
-)
+@app.route("/api/scan/<int:scan_id>/status")
 def scan_status(scan_id):
 
-    user_id = current_user()
+    user_id = session.get("user_id")
 
     if not user_id:
-
-        return jsonify(
-            {
-                "error": "Login required.",
-            }
-        ), 401
+        return jsonify({
+            "error": "Unauthorized"
+        }), 401
 
     try:
 
         scan = get_scan(
             scan_id,
-            user_id,
+            user_id
         )
 
-    except Exception as exc:
+        if not scan:
+            return jsonify({
+                "error": "Scan not found"
+            }), 404
 
-        print(
-            "SCAN STATUS DATABASE ERROR:",
-            repr(exc),
-        )
+        response = {
+            "id": scan["id"],
+            "url": scan["url"],
+            "status": scan["status"],
+            "score": scan.get("score"),
+            "grade": scan.get("grade"),
+            "error": scan.get("error")
+        }
 
-        return jsonify(
-            {
-                "error": "Database connection error.",
-            }
-        ), 500
+        # Only return detailed result when complete.
+        if scan["status"] == "COMPLETED":
 
-    if not scan:
+            result_json = scan.get("result_json")
 
-        return jsonify(
-            {
-                "error": "Scan not found.",
-            }
-        ), 404
+            if result_json:
 
-    response = {
-        "id": scan["id"],
-        "url": scan["url"],
-        "status": scan["status"],
-        "score": scan["score"],
-        "grade": scan["grade"],
-        "error": scan["error"],
-    }
+                try:
+                    response["result"] = json.loads(
+                        result_json
+                    )
+                except Exception:
+                    response["result"] = {}
 
-    if (
-        scan["status"] == "COMPLETED"
-        and scan["result_json"]
-    ):
+        return jsonify(response)
 
-        try:
+    except Exception as e:
 
-            response["result"] = json.loads(
-                scan["result_json"]
-            )
+        print("SCAN STATUS ERROR:", e)
 
-        except Exception:
-
-            response["result"] = {}
-
-    return jsonify(response)
+        return jsonify({
+            "error": "Unable to retrieve scan status",
+            "details": str(e)
+        }), 500
 
 
 # ============================================================
 # SCAN HISTORY
 # ============================================================
 
-@app.get("/api/history")
+@app.route("/api/history")
 def history():
 
-    user_id = current_user()
+    user_id = session.get("user_id")
 
     if not user_id:
-
-        return jsonify(
-            {
-                "error": "Login required.",
-            }
-        ), 401
+        return jsonify({
+            "error": "Unauthorized"
+        }), 401
 
     try:
 
         scans = list_scans(
-            user_id
+            user_id,
+            limit=50
         )
 
-    except Exception as exc:
+        # Convert datetime objects if PostgreSQL returns them.
+        for scan in scans:
 
-        print(
-            "HISTORY DATABASE ERROR:",
-            repr(exc),
-        )
+            if hasattr(
+                scan.get("created_at"),
+                "isoformat"
+            ):
+                scan["created_at"] = (
+                    scan["created_at"].isoformat()
+                )
 
-        return jsonify(
-            {
-                "error": "Database connection error.",
-            }
-        ), 500
+        return jsonify({
+            "scans": scans
+        })
 
-    return jsonify(
-        {
-            "scans": scans,
-        }
-    )
+    except Exception as e:
+
+        print("HISTORY ERROR:", e)
+
+        return jsonify({
+            "error": "Unable to retrieve scan history"
+        }), 500
 
 
 # ============================================================
 # PDF REPORT
 # ============================================================
 
-@app.route("/api/scan/<int:scan_id>/pdf", methods=["GET"])
+@app.route("/api/scan/<int:scan_id>/pdf")
 def scan_pdf(scan_id):
+
     user_id = session.get("user_id")
 
     if not user_id:
-        return jsonify({"error": "Unauthorized"}), 401
-
-    scan = get_scan(scan_id, user_id)
-
-    if not scan:
-        return jsonify({"error": "Scan not found"}), 404
-
-    if scan["status"] != "COMPLETED":
         return jsonify({
-            "error": "Scan is not completed yet"
-        }), 400
+            "error": "Unauthorized"
+        }), 401
 
     try:
+
+        scan = get_scan(
+            scan_id,
+            user_id
+        )
+
+        if not scan:
+            return jsonify({
+                "error": "Scan not found"
+            }), 404
+
+        if scan["status"] != "COMPLETED":
+            return jsonify({
+                "error": "Scan is not completed yet"
+            }), 400
+
+        # Pass the COMPLETE scan record.
         pdf_data = make_pdf(scan)
 
         return send_file(
             io.BytesIO(pdf_data),
             mimetype="application/pdf",
             as_attachment=True,
-            download_name=f"vulnscan-report-{scan_id}.pdf"
+            download_name=(
+                f"vulnscan-report-{scan_id}.pdf"
+            )
         )
 
     except Exception as e:
-        print("PDF GENERATION ERROR:", str(e))
+
+        print("PDF GENERATION ERROR:", e)
+
         return jsonify({
             "error": "Failed to generate PDF",
             "details": str(e)
         }), 500
-        
+
+
 # ============================================================
-# LOCAL DEVELOPMENT
+# RUN LOCALLY
 # ============================================================
 
 if __name__ == "__main__":
 
     app.run(
-        host="127.0.0.1",
-        port=5000,
-        debug=True,
+        host="0.0.0.0",
+        port=int(
+            os.getenv("PORT", 5000)
+        ),
+        debug=True
     )
