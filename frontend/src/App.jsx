@@ -646,7 +646,7 @@ export default function App() {
         <section className="card auth-card">
 
           <h1>
-            VulnScan Lite
+            VulnScan-Lite
           </h1>
 
 
