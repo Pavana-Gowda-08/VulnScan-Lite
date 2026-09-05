@@ -534,71 +534,40 @@ def history():
 # PDF REPORT
 # ============================================================
 
-@app.get(
-    "/api/scan/<int:scan_id>/pdf"
-)
-def pdf(scan_id):
-
-    user_id = current_user()
+@app.route("/api/scan/<int:scan_id>/pdf", methods=["GET"])
+def scan_pdf(scan_id):
+    user_id = session.get("user_id")
 
     if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
 
-        return jsonify(
-            {
-                "error": "Login required.",
-            }
-        ), 401
-
-    scan = get_scan(
-        scan_id,
-        user_id,
-    )
+    scan = get_scan(scan_id, user_id)
 
     if not scan:
-
-        return jsonify(
-            {
-                "error": "Scan not found.",
-            }
-        ), 404
+        return jsonify({"error": "Scan not found"}), 404
 
     if scan["status"] != "COMPLETED":
+        return jsonify({
+            "error": "Scan is not completed yet"
+        }), 400
 
-        return jsonify(
-            {
-                "error": "Completed scan required.",
-            }
-        ), 400
-
-    # Generate PDF from the COMPLETE scan.
-    # This is important because the PDF needs:
-    # URL, score, grade, status and result data.
     try:
-
         pdf_data = make_pdf(scan)
 
-    except Exception as exc:
-
-        print(
-            "PDF GENERATION ERROR:",
-            repr(exc),
+        return send_file(
+            io.BytesIO(pdf_data),
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=f"vulnscan-report-{scan_id}.pdf"
         )
 
-        return jsonify(
-            {
-                "error": "Unable to generate PDF report.",
-            }
-        ), 500
-
-    # make_pdf() returns PDF bytes
-    return send_file(
-        io.BytesIO(pdf_data),
-        mimetype="application/pdf",
-        as_attachment=True,
-        download_name=f"vulnscan-{scan_id}.pdf",
-    )
-
-
+    except Exception as e:
+        print("PDF GENERATION ERROR:", str(e))
+        return jsonify({
+            "error": "Failed to generate PDF",
+            "details": str(e)
+        }), 500
+        
 # ============================================================
 # LOCAL DEVELOPMENT
 # ============================================================
