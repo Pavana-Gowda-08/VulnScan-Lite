@@ -4,7 +4,7 @@ import React, {
 } from "react";
 
 
-const API="http://localhost:5000";
+const API="https://vulnscan-backend-production.up.railway.app";
 
 
 async function api(
