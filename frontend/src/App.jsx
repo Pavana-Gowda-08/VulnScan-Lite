@@ -245,13 +245,50 @@ export default function App() {
 
     try {
 
-      const data =
+      /* =========================
+         CREATE NEW ACCOUNT
+      ========================= */
+
+      if (register) {
+
+        /*
+          If an older user session exists,
+          clear it before creating the
+          new account.
+        */
+
+        try {
+
+          await api(
+            "/api/auth/logout",
+            {
+              method: "POST"
+            }
+          );
+
+        } catch {
+          /*
+            Continue registration even if
+            there was no active session.
+          */
+        }
+
+
+        /*
+          Clear old user's frontend data.
+        */
+
+        setUser(null);
+        setScan(null);
+        setHistory([]);
+
+
+        /*
+          Create the new account.
+        */
+
         await api(
-
-          register
-            ? "/api/auth/register"
-            : "/api/auth/login",
-
+          "/api/auth/register",
           {
             method: "POST",
 
@@ -263,13 +300,71 @@ export default function App() {
         );
 
 
+        /*
+          Registration does not automatically
+          log the user in.
+
+          Return to the login screen so the
+          new account can establish its own
+          authenticated session.
+        */
+
+        setRegister(false);
+
+        setPassword("");
+
+        setError(
+          "Account created successfully. Please login with your new account."
+        );
+
+        return;
+      }
+
+
+      /* =========================
+         NORMAL LOGIN
+      ========================= */
+
+      const data =
+        await api(
+          "/api/auth/login",
+          {
+            method: "POST",
+
+            body: JSON.stringify({
+              email,
+              password
+            })
+          }
+        );
+
+
+      /*
+        Login creates the new authenticated
+        session on the backend.
+      */
+
       setUser(
         data.user
       );
 
 
-      await loadHistory();
+      /*
+        Clear any previous frontend scan
+        and history state before loading
+        the newly logged-in user's data.
+      */
 
+      setScan(null);
+      setHistory([]);
+
+
+      /*
+        Load history only AFTER successful
+        login.
+      */
+
+      await loadHistory();
 
     } catch (error) {
 
@@ -300,9 +395,21 @@ export default function App() {
     }
 
 
+    /*
+      Clear all account-specific
+      frontend state.
+    */
+
     setUser(null);
     setScan(null);
+    setHistory([]);
     setError("");
+
+    /*
+      Return to login mode.
+    */
+
+    setRegister(false);
   }
 
 
@@ -373,7 +480,6 @@ export default function App() {
           data.status || "QUEUED"
 
       });
-
 
     } catch (error) {
 
@@ -499,11 +605,7 @@ export default function App() {
 
 
     /*
-      IMPORTANT:
       Check immediately.
-
-      Previously the frontend waited
-      2 seconds before the first request.
     */
 
     checkScanStatus();
@@ -624,7 +726,15 @@ export default function App() {
 
           {error && (
 
-            <p className="error">
+            <p
+              className={
+                error.includes(
+                  "successfully"
+                )
+                  ? "success"
+                  : "error"
+              }
+            >
               {error}
             </p>
 
@@ -635,11 +745,25 @@ export default function App() {
 
             className="link-button"
 
-            onClick={() =>
+            onClick={() => {
+
+              /*
+                Clear registration/login
+                messages and old frontend
+                data when switching modes.
+              */
+
+              setError("");
+
+              setScan(null);
+
+              setHistory([]);
+
               setRegister(
                 !register
-              )
-            }
+              );
+
+            }}
 
           >
 
@@ -716,6 +840,7 @@ export default function App() {
   return (
 
     <main className="page">
+
 
       {/* =========================
           HEADER
@@ -1114,6 +1239,7 @@ export default function App() {
         )}
 
       </section>
+
 
     </main>
   );
