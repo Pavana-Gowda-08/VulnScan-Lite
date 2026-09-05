@@ -1,340 +1,321 @@
 from io import BytesIO
 
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (
-SimpleDocTemplate,
-Paragraph,
-Spacer,
-Table,
-TableStyle
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
 )
 
-def make_pdf(result):
 
-buffer = BytesIO()
+def make_pdf(scan):
+    buffer = BytesIO()
 
-document = SimpleDocTemplate(
-    buffer,
-    pagesize=A4,
-    rightMargin=18 * mm,
-    leftMargin=18 * mm,
-    topMargin=18 * mm,
-    bottomMargin=18 * mm
-)
-
-styles = getSampleStyleSheet()
-
-styles["Title"].alignment = TA_CENTER
-
-# -----------------------------
-# Custom PDF styles
-# -----------------------------
-
-table_header_style = ParagraphStyle(
-    "TableHeader",
-    parent=styles["BodyText"],
-    fontSize=8,
-    leading=10,
-    textColor=colors.white,
-    spaceAfter=0,
-    spaceBefore=0
-)
-
-table_cell_style = ParagraphStyle(
-    "TableCell",
-    parent=styles["BodyText"],
-    fontSize=7.5,
-    leading=9,
-    spaceAfter=0,
-    spaceBefore=0
-)
-
-table_status_style = ParagraphStyle(
-    "TableStatus",
-    parent=table_cell_style,
-    alignment=TA_CENTER
-)
-
-remediation_style = ParagraphStyle(
-    "Remediation",
-    parent=styles["BodyText"],
-    fontSize=9,
-    leading=12,
-    spaceAfter=6
-)
-
-target_style = ParagraphStyle(
-    "Target",
-    parent=styles["BodyText"],
-    fontSize=9,
-    leading=12,
-    wordWrap="CJK"
-)
-
-story = []
-
-# -----------------------------
-# Title
-# -----------------------------
-
-story.append(
-    Paragraph(
-        "VulnScan Lite",
-        styles["Title"]
-    )
-)
-
-story.append(
-    Paragraph(
-        "Security Health Report",
-        styles["Heading2"]
-    )
-)
-
-story.append(
-    Spacer(1, 10)
-)
-
-# -----------------------------
-# Basic scan information
-# -----------------------------
-
-story.append(
-    Paragraph(
-        f"<b>Target:</b> {result.get('url', '')}",
-        target_style
-    )
-)
-
-story.append(
-    Paragraph(
-        f"<b>Score:</b> {result.get('score', '-')}/100",
-        styles["BodyText"]
-    )
-)
-
-story.append(
-    Paragraph(
-        f"<b>Grade:</b> {result.get('grade', '-')}",
-        styles["BodyText"]
-    )
-)
-
-story.append(
-    Spacer(1, 15)
-)
-
-# -----------------------------
-# Findings table
-# -----------------------------
-
-rows = [
-    [
-        Paragraph("Status", table_header_style),
-        Paragraph("Check", table_header_style),
-        Paragraph("Severity", table_header_style),
-        Paragraph("Evidence", table_header_style)
-    ]
-]
-
-for finding in result.get("all_checks", []):
-
-    status = (
-        "PASS"
-        if finding.get("passed")
-        else "FAIL"
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=15 * mm,
+        leftMargin=15 * mm,
+        topMargin=15 * mm,
+        bottomMargin=15 * mm,
     )
 
-    title = finding.get(
-        "title",
-        ""
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        "TitleCustom",
+        parent=styles["Title"],
+        alignment=TA_CENTER,
+        fontSize=18,
+        leading=22,
+        spaceAfter=10,
     )
 
-    severity = finding.get(
-        "severity",
-        ""
+    heading_style = ParagraphStyle(
+        "HeadingCustom",
+        parent=styles["Heading2"],
+        fontSize=12,
+        leading=15,
+        spaceBefore=8,
+        spaceAfter=6,
     )
 
-    evidence = finding.get(
-        "evidence",
-        ""
+    normal_style = ParagraphStyle(
+        "NormalCustom",
+        parent=styles["Normal"],
+        fontSize=9,
+        leading=12,
     )
 
-    # Convert everything into Paragraphs.
-    # This makes long text wrap automatically.
-    rows.append(
-        [
-            Paragraph(
-                status,
-                table_status_style
-            ),
-
-            Paragraph(
-                str(title),
-                table_cell_style
-            ),
-
-            Paragraph(
-                str(severity),
-                table_cell_style
-            ),
-
-            Paragraph(
-                str(evidence),
-                table_cell_style
-            )
-        ]
+    small_style = ParagraphStyle(
+        "SmallCustom",
+        parent=styles["Normal"],
+        fontSize=8,
+        leading=10,
     )
 
-# A4 width with 18 mm margins
-# is approximately 174 mm.
-#
-# These columns fit within that width.
-table = Table(
-    rows,
-    colWidths=[
-        18 * mm,
-        42 * mm,
-        23 * mm,
-        91 * mm
-    ],
-    repeatRows=1,
-    hAlign="LEFT"
-)
-
-table.setStyle(
-    TableStyle([
-
-        (
-            "BACKGROUND",
-            (0, 0),
-            (-1, 0),
-            colors.HexColor("#1f2937")
-        ),
-
-        (
-            "TEXTCOLOR",
-            (0, 0),
-            (-1, 0),
-            colors.white
-        ),
-
-        (
-            "GRID",
-            (0, 0),
-            (-1, -1),
-            0.4,
-            colors.grey
-        ),
-
-        (
-            "VALIGN",
-            (0, 0),
-            (-1, -1),
-            "TOP"
-        ),
-
-        (
-            "LEFTPADDING",
-            (0, 0),
-            (-1, -1),
-            5
-        ),
-
-        (
-            "RIGHTPADDING",
-            (0, 0),
-            (-1, -1),
-            5
-        ),
-
-        (
-            "TOPPADDING",
-            (0, 0),
-            (-1, -1),
-            5
-        ),
-
-        (
-            "BOTTOMPADDING",
-            (0, 0),
-            (-1, -1),
-            5
-        ),
-
-        (
-            "ALIGN",
-            (0, 0),
-            (0, -1),
-            "CENTER"
-        )
-    ])
-)
-
-story.append(table)
-
-story.append(
-    Spacer(1, 15)
-)
-
-# -----------------------------
-# Remediation section
-# -----------------------------
-
-story.append(
-    Paragraph(
-        "Remediation",
-        styles["Heading2"]
-    )
-)
-
-for finding in result.get(
-    "failed_checks",
-    []
-):
-
-    title = finding.get(
-        "title",
-        "Security Check"
+    cell_style = ParagraphStyle(
+        "CellCustom",
+        parent=styles["Normal"],
+        fontSize=8,
+        leading=10,
     )
 
-    remediation = finding.get(
-        "remediation",
-        "No remediation information available."
+    header_style = ParagraphStyle(
+        "HeaderCustom",
+        parent=cell_style,
+        fontName="Helvetica-Bold",
     )
+
+    story = []
+
+    # --------------------------------------------------
+    # TITLE
+    # --------------------------------------------------
 
     story.append(
         Paragraph(
-            f"<b>{title}:</b> {remediation}",
-            remediation_style
+            "VulnScan Lite - Security Scan Report",
+            title_style,
         )
     )
 
-story.append(
-    Spacer(1, 15)
-)
+    story.append(Spacer(1, 5 * mm))
 
-# -----------------------------
-# Disclaimer
-# -----------------------------
+    # --------------------------------------------------
+    # BASIC SCAN INFORMATION
+    # --------------------------------------------------
 
-story.append(
-    Paragraph(
-        "Only scan websites you own "
-        "or are authorized to assess. "
-        "Passive analysis only.",
-        styles["Italic"]
+    url = scan.get("url", "")
+    status = scan.get("status", "")
+    score = scan.get("score", "")
+    grade = scan.get("grade", "")
+
+    info_data = [
+        [
+            Paragraph("<b>Target URL</b>", cell_style),
+            Paragraph(str(url), cell_style),
+        ],
+        [
+            Paragraph("<b>Status</b>", cell_style),
+            Paragraph(str(status), cell_style),
+        ],
+        [
+            Paragraph("<b>Security Score</b>", cell_style),
+            Paragraph(str(score), cell_style),
+        ],
+        [
+            Paragraph("<b>Grade</b>", cell_style),
+            Paragraph(str(grade), cell_style),
+        ],
+    ]
+
+    info_table = Table(
+        info_data,
+        colWidths=[40 * mm, 135 * mm],
+        repeatRows=0,
     )
-)
 
-# -----------------------------
-# Build PDF
-# -----------------------------
+    info_table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("BACKGROUND", (0, 0), (0, -1), colors.whitesmoke),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
 
-document.build(story)
+    story.append(info_table)
+    story.append(Spacer(1, 8 * mm))
 
-return buffer.getvalue()
+    # --------------------------------------------------
+    # CHECK RESULTS
+    # --------------------------------------------------
+
+    story.append(
+        Paragraph(
+            "Security Checks",
+            heading_style,
+        )
+    )
+
+    result_json = scan.get("result_json")
+
+    checks = []
+
+    if isinstance(result_json, dict):
+        checks = result_json.get("checks", [])
+
+    elif isinstance(result_json, list):
+        checks = result_json
+
+    # If result_json is stored as JSON text
+    if isinstance(result_json, str):
+        try:
+            import json
+
+            parsed = json.loads(result_json)
+
+            if isinstance(parsed, dict):
+                checks = parsed.get("checks", [])
+
+            elif isinstance(parsed, list):
+                checks = parsed
+
+        except Exception:
+            checks = []
+
+    table_data = [
+        [
+            Paragraph("Check", header_style),
+            Paragraph("Status", header_style),
+            Paragraph("Severity", header_style),
+            Paragraph("Evidence / Recommendation", header_style),
+        ]
+    ]
+
+    for check in checks:
+
+        if not isinstance(check, dict):
+            continue
+
+        name = check.get(
+            "name",
+            check.get("check", "Unknown")
+        )
+
+        check_status = check.get(
+            "status",
+            check.get("result", "")
+        )
+
+        severity = check.get(
+            "severity",
+            ""
+        )
+
+        evidence = check.get(
+            "evidence",
+            check.get(
+                "recommendation",
+                check.get(
+                    "description",
+                    ""
+                )
+            )
+        )
+
+        table_data.append(
+            [
+                Paragraph(
+                    str(name),
+                    cell_style,
+                ),
+                Paragraph(
+                    str(check_status),
+                    cell_style,
+                ),
+                Paragraph(
+                    str(severity),
+                    cell_style,
+                ),
+                Paragraph(
+                    str(evidence),
+                    cell_style,
+                ),
+            ]
+        )
+
+    if len(table_data) == 1:
+        table_data.append(
+            [
+                Paragraph("No checks available", cell_style),
+                Paragraph("", cell_style),
+                Paragraph("", cell_style),
+                Paragraph("", cell_style),
+            ]
+        )
+
+    results_table = Table(
+        table_data,
+        colWidths=[
+            30 * mm,
+            25 * mm,
+            25 * mm,
+            95 * mm,
+        ],
+        repeatRows=1,
+    )
+
+    results_table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+
+    story.append(results_table)
+
+    # --------------------------------------------------
+    # ERROR INFORMATION
+    # --------------------------------------------------
+
+    error = scan.get("error")
+
+    if error:
+        story.append(Spacer(1, 8 * mm))
+
+        story.append(
+            Paragraph(
+                "Scan Error",
+                heading_style,
+            )
+        )
+
+        story.append(
+            Paragraph(
+                str(error),
+                normal_style,
+            )
+        )
+
+    # --------------------------------------------------
+    # FOOTER
+    # --------------------------------------------------
+
+    story.append(Spacer(1, 10 * mm))
+
+    story.append(
+        Paragraph(
+            "Generated by VulnScan Lite",
+            small_style,
+        )
+    )
+
+    # --------------------------------------------------
+    # BUILD PDF
+    # --------------------------------------------------
+
+    doc.build(story)
+
+    buffer.seek(0)
+
+    return buffer
