@@ -2,7 +2,7 @@ import io
 import json
 import os
 
-from flask import Flask, jsonify, request, session, send_file
+from flask import Flask, jsonify, request, session, send_file, make_response
 from flask_cors import CORS
 from werkzeug.security import check_password_hash
 
@@ -448,7 +448,7 @@ def scan_pdf(scan_id):
             "error": "Failed to generate report",
             "details": str(e)
         }), 500
-        
+
 # ============================================================
 # RUN LOCALLY
 # ============================================================
