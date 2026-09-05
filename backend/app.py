@@ -406,52 +406,49 @@ def history():
 @app.route("/api/scan/<int:scan_id>/pdf")
 def scan_pdf(scan_id):
 
-    user_id = session.get("user_id")
+    if "user_id" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
 
-    if not user_id:
+    scan = get_scan(
+        scan_id,
+        session["user_id"]
+    )
+
+    if not scan:
+        return jsonify({"error": "Scan not found"}), 404
+
+    if scan["status"] != "COMPLETED":
         return jsonify({
-            "error": "Unauthorized"
-        }), 401
+            "error": "Scan is not completed yet"
+        }), 400
+
+    if not scan.get("result_json"):
+        return jsonify({
+            "error": "Scan result is not available"
+        }), 400
 
     try:
+        result = json.loads(scan["result_json"])
 
-        scan = get_scan(
-            scan_id,
-            user_id
-        )
+        pdf_data = make_pdf(result)
 
-        if not scan:
-            return jsonify({
-                "error": "Scan not found"
-            }), 404
+        response = make_response(pdf_data)
 
-        if scan["status"] != "COMPLETED":
-            return jsonify({
-                "error": "Scan is not completed yet"
-            }), 400
+        response.headers["Content-Type"] = "application/pdf"
+        response.headers[
+            "Content-Disposition"
+        ] = f'attachment; filename="vulnscan-report-{scan_id}.pdf"'
 
-        # Pass the COMPLETE scan record.
-        pdf_data = make_pdf(scan)
-
-        return send_file(
-            io.BytesIO(pdf_data),
-            mimetype="application/pdf",
-            as_attachment=True,
-            download_name=(
-                f"vulnscan-report-{scan_id}.pdf"
-            )
-        )
+        return response
 
     except Exception as e:
-
-        print("PDF GENERATION ERROR:", e)
+        print("PDF GENERATION ERROR:", repr(e))
 
         return jsonify({
-            "error": "Failed to generate PDF",
+            "error": "Failed to generate report",
             "details": str(e)
         }), 500
-
-
+        
 # ============================================================
 # RUN LOCALLY
 # ============================================================
