@@ -1,25 +1,35 @@
 import os
-import sqlite3
 
+import psycopg
+from psycopg.rows import dict_row
 from contextlib import contextmanager
 from werkzeug.security import generate_password_hash
 
-DB_PATH = os.getenv(
-    "DATABASE_PATH",
-    "vulnscan.db"
-)
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL environment variable is not set."
+    )
 
 
 @contextmanager
 def connect():
 
-    connection = sqlite3.connect(DB_PATH)
-
-    connection.row_factory = sqlite3.Row
+    connection = psycopg.connect(
+        DATABASE_URL,
+        row_factory=dict_row
+    )
 
     try:
         yield connection
         connection.commit()
+
+    except Exception:
+        connection.rollback()
+        raise
 
     finally:
         connection.close()
@@ -29,16 +39,16 @@ def init_db():
 
     with connect() as db:
 
-        db.executescript("""
+        db.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             email TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS scans (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             url TEXT NOT NULL,
             status TEXT NOT NULL,
@@ -46,7 +56,7 @@ def init_db():
             grade TEXT,
             result_json TEXT,
             error TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
             FOREIGN KEY(user_id)
             REFERENCES users(id)
@@ -56,7 +66,11 @@ def init_db():
         demo_email = "demo@vulnscan.local"
 
         existing = db.execute(
-            "SELECT 1 FROM users WHERE email=?",
+            """
+            SELECT 1
+            FROM users
+            WHERE email=%s
+            """,
             (demo_email,)
         ).fetchone()
 
@@ -66,7 +80,7 @@ def init_db():
                 """
                 INSERT INTO users
                 (email, password_hash)
-                VALUES (?, ?)
+                VALUES (%s, %s)
                 """,
                 (
                     demo_email,
@@ -83,7 +97,8 @@ def create_user(email, password):
             """
             INSERT INTO users
             (email, password_hash)
-            VALUES (?, ?)
+            VALUES (%s, %s)
+            RETURNING id
             """,
             (
                 email.lower().strip(),
@@ -91,7 +106,7 @@ def create_user(email, password):
             )
         )
 
-        return cursor.lastrowid
+        return cursor.fetchone()["id"]
 
 
 def get_user(email):
@@ -102,7 +117,7 @@ def get_user(email):
             """
             SELECT *
             FROM users
-            WHERE email=?
+            WHERE email=%s
             """,
             (email.lower().strip(),)
         ).fetchone()
@@ -118,7 +133,8 @@ def create_scan(user_id, url):
             """
             INSERT INTO scans
             (user_id, url, status)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
+            RETURNING id
             """,
             (
                 user_id,
@@ -127,7 +143,7 @@ def create_scan(user_id, url):
             )
         )
 
-        return cursor.lastrowid
+        return cursor.fetchone()["id"]
 
 
 def set_scan(scan_id, **fields):
@@ -150,7 +166,7 @@ def set_scan(scan_id, **fields):
         return
 
     sql = ", ".join(
-        f"{key}=?"
+        f"{key}=%s"
         for key in fields
     )
 
@@ -163,7 +179,7 @@ def set_scan(scan_id, **fields):
             f"""
             UPDATE scans
             SET {sql}
-            WHERE id=?
+            WHERE id=%s
             """,
             values
         )
@@ -179,7 +195,7 @@ def get_scan(scan_id, user_id=None):
                 """
                 SELECT *
                 FROM scans
-                WHERE id=?
+                WHERE id=%s
                 """,
                 (scan_id,)
             ).fetchone()
@@ -190,8 +206,8 @@ def get_scan(scan_id, user_id=None):
                 """
                 SELECT *
                 FROM scans
-                WHERE id=?
-                AND user_id=?
+                WHERE id=%s
+                AND user_id=%s
                 """,
                 (
                     scan_id,
@@ -215,14 +231,10 @@ def list_scans(user_id, limit=50):
                 score,
                 grade,
                 created_at
-
             FROM scans
-
-            WHERE user_id=?
-
+            WHERE user_id=%s
             ORDER BY id DESC
-
-            LIMIT ?
+            LIMIT %s
             """,
             (
                 user_id,
