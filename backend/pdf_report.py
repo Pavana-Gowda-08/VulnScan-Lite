@@ -1,292 +1,234 @@
 from io import BytesIO
-import json
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import mm
+from reportlab.lib.styles import (
+    getSampleStyleSheet,
+    ParagraphStyle
+)
+from reportlab.lib.enums import TA_CENTER
 from reportlab.platypus import (
     SimpleDocTemplate,
     Paragraph,
     Spacer,
     Table,
-    TableStyle,
+    TableStyle
 )
 
 
-def make_pdf(scan):
+def make_pdf(result):
 
     buffer = BytesIO()
 
-    doc = SimpleDocTemplate(
+    document = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        leftMargin=12 * mm,
-        rightMargin=12 * mm,
-        topMargin=12 * mm,
-        bottomMargin=12 * mm,
+        rightMargin=36,
+        leftMargin=36,
+        topMargin=36,
+        bottomMargin=36
     )
 
     styles = getSampleStyleSheet()
 
-    # --------------------------------------------------------
-    # TITLE STYLE
-    # --------------------------------------------------------
+    styles["Title"].alignment = TA_CENTER
 
-    title_style = ParagraphStyle(
-        "ReportTitle",
-        parent=styles["Title"],
-        fontName="Helvetica-Bold",
-        fontSize=18,
-        leading=22,
-        alignment=TA_LEFT,
-        spaceAfter=8,
-    )
+    # ---------------------------------------------------------
+    # TABLE TEXT STYLE
+    # This is the important fix.
+    # Paragraph automatically wraps text inside the cell.
+    # ---------------------------------------------------------
 
-    # --------------------------------------------------------
-    # NORMAL TEXT
-    # --------------------------------------------------------
-
-    normal_style = ParagraphStyle(
-        "NormalText",
+    table_style = ParagraphStyle(
+        "TableText",
         parent=styles["BodyText"],
-        fontName="Helvetica",
-        fontSize=9,
-        leading=12,
-        alignment=TA_LEFT,
-        wordWrap="LTR",
-        splitLongWords=True,
-    )
-
-    # --------------------------------------------------------
-    # SMALL TABLE TEXT
-    # --------------------------------------------------------
-
-    small_style = ParagraphStyle(
-        "SmallText",
-        parent=styles["BodyText"],
-        fontName="Helvetica",
-        fontSize=7.5,
-        leading=10,
-        alignment=TA_LEFT,
-        wordWrap="LTR",
-        splitLongWords=True,
-    )
-
-    # --------------------------------------------------------
-    # TABLE HEADER
-    # --------------------------------------------------------
-
-    header_style = ParagraphStyle(
-        "HeaderText",
-        parent=styles["BodyText"],
-        fontName="Helvetica-Bold",
         fontSize=8,
         leading=10,
-        alignment=TA_LEFT,
         wordWrap="LTR",
+        splitLongWords=True,
+        spaceAfter=0,
+        spaceBefore=0
+    )
+
+    table_header_style = ParagraphStyle(
+        "TableHeader",
+        parent=styles["BodyText"],
+        fontSize=8,
+        leading=10,
+        wordWrap="LTR",
+        splitLongWords=True,
+        spaceAfter=0,
+        spaceBefore=0
     )
 
     story = []
 
-    # ========================================================
-    # LOAD SCAN RESULT
-    # ========================================================
-
-    url = scan.get("url", "")
-    score = scan.get("score")
-    grade = scan.get("grade")
-    status = scan.get("status", "")
-
-    result = {}
-
-    result_json = scan.get("result_json")
-
-    if result_json:
-
-        try:
-            result = json.loads(result_json)
-
-        except Exception:
-            result = {}
-
-    # ========================================================
-    # REPORT TITLE
-    # ========================================================
+    # ---------------------------------------------------------
+    # TITLE
+    # ---------------------------------------------------------
 
     story.append(
         Paragraph(
-            "Security Health Report",
-            title_style,
+            "VulnScan Lite",
+            styles["Title"]
         )
     )
 
     story.append(
         Paragraph(
-            f"<b>Target:</b> {url}",
-            normal_style,
+            "Security Health Report",
+            styles["Heading2"]
         )
     )
 
     story.append(
+        Spacer(
+            1,
+            10
+        )
+    )
+
+    # ---------------------------------------------------------
+    # TARGET
+    # ---------------------------------------------------------
+
+    story.append(
         Paragraph(
-            f"<b>Score:</b> {score}/100",
-            normal_style,
+            f"<b>Target:</b> "
+            f"{result['url']}",
+            styles["BodyText"]
+        )
+    )
+
+    # ---------------------------------------------------------
+    # SCORE
+    # ---------------------------------------------------------
+
+    story.append(
+        Paragraph(
+            f"<b>Score:</b> "
+            f"{result['score']}/100",
+            styles["BodyText"]
+        )
+    )
+
+    # ---------------------------------------------------------
+    # GRADE
+    # ---------------------------------------------------------
+
+    story.append(
+        Paragraph(
+            f"<b>Grade:</b> "
+            f"{result['grade']}",
+            styles["BodyText"]
         )
     )
 
     story.append(
-        Paragraph(
-            f"<b>Grade:</b> {grade}",
-            normal_style,
+        Spacer(
+            1,
+            15
         )
     )
 
-    story.append(
-        Paragraph(
-            f"<b>Status:</b> {status}",
-            normal_style,
-        )
-    )
-
-    story.append(Spacer(1, 10))
-
-    # ========================================================
-    # SECURITY CHECKS
-    # ========================================================
-
-    story.append(
-        Paragraph(
-            "<b>Security Checks</b>",
-            normal_style,
-        )
-    )
-
-    story.append(Spacer(1, 5))
-
-    checks = result.get(
-        "passed_checks",
-        []
-    )
-
-    if not checks:
-        checks = result.get(
-            "checks",
-            []
-        )
-
-    # --------------------------------------------------------
+    # ---------------------------------------------------------
     # TABLE HEADER
-    # --------------------------------------------------------
+    # ---------------------------------------------------------
 
-    table_data = [
+    rows = [
         [
             Paragraph(
                 "Status",
-                header_style
+                table_header_style
             ),
+
             Paragraph(
                 "Check",
-                header_style
+                table_header_style
             ),
+
             Paragraph(
                 "Severity",
-                header_style
+                table_header_style
             ),
+
             Paragraph(
                 "Evidence",
-                header_style
-            ),
+                table_header_style
+            )
         ]
     ]
 
-    # --------------------------------------------------------
+    # ---------------------------------------------------------
     # CHECK ROWS
-    # --------------------------------------------------------
+    # ---------------------------------------------------------
 
-    for check in checks:
+    for finding in result["all_checks"]:
 
-        passed = check.get(
-            "passed",
-            False
-        )
-
-        status_text = (
+        status = (
             "PASS"
-            if passed
+            if finding["passed"]
             else "FAIL"
         )
 
-        title = check.get(
-            "title",
-            ""
-        )
+        title = finding["title"]
 
-        severity = check.get(
+        severity = finding.get(
             "severity",
             ""
         )
 
-        evidence = check.get(
+        evidence = finding.get(
             "evidence",
             ""
-        )
+        )[:180]
 
-        table_data.append(
+        rows.append(
             [
                 Paragraph(
-                    str(status_text),
-                    small_style
+                    status,
+                    table_style
                 ),
 
                 Paragraph(
                     str(title),
-                    small_style
+                    table_style
                 ),
 
                 Paragraph(
                     str(severity),
-                    small_style
+                    table_style
                 ),
 
                 Paragraph(
                     str(evidence),
-                    small_style
-                ),
+                    table_style
+                )
             ]
         )
 
-    # ========================================================
-    # SECURITY CHECK TABLE
+    # ---------------------------------------------------------
+    # TABLE
     #
-    # A4 width:
-    # 210 mm
+    # Original column widths are preserved.
     #
-    # Margins:
-    # 12 + 12 = 24 mm
-    #
-    # Available:
-    # 186 mm
-    #
-    # Columns:
-    # 20 + 38 + 25 + 103 = 186 mm
-    # ========================================================
+    # Paragraph objects make the text wrap inside each
+    # respective column.
+    # ---------------------------------------------------------
 
-    check_table = Table(
-        table_data,
+    table = Table(
+        rows,
         colWidths=[
-            20 * mm,
-            38 * mm,
-            25 * mm,
-            103 * mm,
+            50,
+            130,
+            65,
+            280
         ],
         repeatRows=1,
-        splitByRow=True,
-        hAlign="LEFT",
+        splitByRow=True
     )
 
-    check_table.setStyle(
+    table.setStyle(
         TableStyle(
             [
 
@@ -296,8 +238,8 @@ def make_pdf(scan):
                     (0, 0),
                     (-1, 0),
                     colors.HexColor(
-                        "#E5E7EB"
-                    ),
+                        "#1f2937"
+                    )
                 ),
 
                 # Header text
@@ -305,7 +247,7 @@ def make_pdf(scan):
                     "TEXTCOLOR",
                     (0, 0),
                     (-1, 0),
-                    colors.black,
+                    colors.white
                 ),
 
                 # Grid
@@ -313,8 +255,8 @@ def make_pdf(scan):
                     "GRID",
                     (0, 0),
                     (-1, -1),
-                    0.5,
-                    colors.grey,
+                    0.4,
+                    colors.grey
                 ),
 
                 # Top alignment
@@ -322,7 +264,15 @@ def make_pdf(scan):
                     "VALIGN",
                     (0, 0),
                     (-1, -1),
-                    "TOP",
+                    "TOP"
+                ),
+
+                # Font size
+                (
+                    "FONTSIZE",
+                    (0, 0),
+                    (-1, -1),
+                    8
                 ),
 
                 # Cell padding
@@ -330,105 +280,101 @@ def make_pdf(scan):
                     "LEFTPADDING",
                     (0, 0),
                     (-1, -1),
-                    4,
+                    4
                 ),
 
                 (
                     "RIGHTPADDING",
                     (0, 0),
                     (-1, -1),
-                    4,
+                    4
                 ),
 
                 (
                     "TOPPADDING",
                     (0, 0),
                     (-1, -1),
-                    4,
+                    4
                 ),
 
                 (
                     "BOTTOMPADDING",
                     (0, 0),
                     (-1, -1),
-                    4,
-                ),
+                    4
+                )
             ]
         )
     )
 
-    story.append(check_table)
-
-    story.append(Spacer(1, 12))
-
-    # ========================================================
-    # REMEDIATION
-    # ========================================================
+    story.append(table)
 
     story.append(
-        Paragraph(
-            "<b>Remediation</b>",
-            normal_style,
+        Spacer(
+            1,
+            15
         )
     )
 
-    story.append(Spacer(1, 5))
+    # ---------------------------------------------------------
+    # REMEDIATION
+    # ---------------------------------------------------------
 
-    remediation = result.get(
-        "remediation",
-        ""
+    story.append(
+        Paragraph(
+            "Remediation",
+            styles["Heading2"]
+        )
     )
 
-    if isinstance(
-        remediation,
-        list
-    ):
+    for finding in result["failed_checks"]:
 
-        for item in remediation:
-
-            story.append(
-                Paragraph(
-                    str(item),
-                    small_style,
-                )
-            )
-
-            story.append(
-                Spacer(1, 4)
-            )
-
-    elif remediation:
+        remediation_text = (
+            f"<b>{finding['title']}"
+            f":</b> "
+            f"{finding['remediation']}"
+        )
 
         story.append(
             Paragraph(
-                str(remediation),
-                small_style,
+                remediation_text,
+                styles["BodyText"]
             )
         )
 
-    # ========================================================
-    # DISCLAIMER
-    # ========================================================
+        story.append(
+            Spacer(
+                1,
+                7
+            )
+        )
 
     story.append(
-        Spacer(1, 12)
-    )
-
-    story.append(
-        Paragraph(
-            "Only scan websites you own or are "
-            "authorized to assess. "
-            "This tool performs passive analysis only.",
-            small_style,
+        Spacer(
+            1,
+            15
         )
     )
 
-    # ========================================================
+    # ---------------------------------------------------------
+    # DISCLAIMER
+    # ---------------------------------------------------------
+
+    story.append(
+        Paragraph(
+            "Only scan websites you own "
+            "or are authorized to assess. "
+            "Passive analysis only.",
+            styles["Italic"]
+        )
+    )
+
+    # ---------------------------------------------------------
     # BUILD PDF
-    # ========================================================
+    # ---------------------------------------------------------
 
-    doc.build(story)
-
-    buffer.seek(0)
+    document.build(
+        story
+    )
 
     return buffer.getvalue()

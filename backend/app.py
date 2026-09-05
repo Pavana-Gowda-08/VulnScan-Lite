@@ -80,14 +80,9 @@ except Exception as e:
 @app.route("/")
 def home():
     return jsonify({
-        "service": "VulnScan Lite",
-        "description": "On-Demand Web Vulnerability Scanner",
-        "mode": "Passive security analysis",
-        "status": "online",
-        "disclaimer": (
-            "Only scan websites you own or are authorized to assess. "
-            "This tool performs passive analysis only."
-        )
+        "ok": "True",
+        "service":" VulnScan Lite",
+        "message": "Backend is running",
     })
 
 
