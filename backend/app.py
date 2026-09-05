@@ -39,11 +39,13 @@ load_dotenv()
 
 app = Flask(__name__)
 
+app.secret_key = os.getenv("SECRET_KEY", "dev-only-secret")
 
-app.secret_key = os.getenv(
-    "SECRET_KEY",
-    "dev-only-secret"
+app.config.update(
+    SESSION_COOKIE_SAMESITE="None",
+    SESSION_COOKIE_SECURE=True,
 )
+
 
 @app.get("/")
 def home():
