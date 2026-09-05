@@ -4,25 +4,21 @@ import React, {
 } from "react";
 
 
-const API="https://vulnscan-backend-production.up.railway.app";
+const API =
+  "https://vulnscan-backend-production.up.railway.app";
 
 
 async function api(
   endpoint,
   options = {}
 ) {
-
   const response = await fetch(
-
     API + endpoint,
-
     {
       credentials: "include",
 
       headers: {
-        "Content-Type":
-          "application/json",
-
+        "Content-Type": "application/json",
         ...(options.headers || {})
       },
 
@@ -34,16 +30,13 @@ async function api(
   const data =
     await response
       .json()
-      .catch(
-        () => ({})
-      );
+      .catch(() => ({}));
 
 
   if (!response.ok) {
-
     throw new Error(
-      data.error
-      || "Request failed"
+      data.error ||
+      "Request failed"
     );
   }
 
@@ -52,49 +45,47 @@ async function api(
 }
 
 
+/* =========================
+   SCORE GAUGE
+========================= */
+
 function Gauge({
   score
 }) {
-
   return (
-
     <div
       className="gauge"
       style={{
-        "--score":
-          score || 0
+        "--score": score ?? 0
       }}
     >
-
       <div className="gauge-value">
-
         {score ?? "--"}
-
       </div>
 
       <div className="gauge-label">
-
         /100
-
       </div>
-
     </div>
   );
 }
 
 
+/* =========================
+   SECURITY CHECKS
+========================= */
+
 function Checks({
   title,
-  items
+  items = []
 }) {
-
   return (
-
     <section>
 
       <h3>
         {title}
       </h3>
+
 
       {items.length === 0 ? (
 
@@ -111,7 +102,11 @@ function Checks({
           ) => (
 
             <article
-              key={index}
+              key={
+                item.id ||
+                index
+              }
+
               className={
                 item.passed
                   ? "check pass"
@@ -123,9 +118,11 @@ function Checks({
                 {item.title}
               </h4>
 
+
               <p>
                 {item.evidence}
               </p>
+
 
               {!item.passed && (
 
@@ -152,6 +149,10 @@ function Checks({
   );
 }
 
+
+/* =========================
+   MAIN APP
+========================= */
 
 export default function App() {
 
@@ -209,6 +210,10 @@ export default function App() {
   ] = useState("");
 
 
+  /* =========================
+     LOAD SCAN HISTORY
+  ========================= */
+
   async function loadHistory() {
 
     try {
@@ -218,20 +223,25 @@ export default function App() {
           "/api/history"
         );
 
+
       setHistory(
-        data.scans
+        data.scans || []
       );
 
     } catch {
-
       // User may not be logged in.
     }
   }
 
 
+  /* =========================
+     LOGIN / REGISTER
+  ========================= */
+
   async function handleLogin() {
 
     setError("");
+
 
     try {
 
@@ -246,10 +256,8 @@ export default function App() {
             method: "POST",
 
             body: JSON.stringify({
-
               email,
               password
-
             })
           }
         );
@@ -259,7 +267,9 @@ export default function App() {
         data.user
       );
 
-      loadHistory();
+
+      await loadHistory();
+
 
     } catch (error) {
 
@@ -270,29 +280,59 @@ export default function App() {
   }
 
 
+  /* =========================
+     LOGOUT
+  ========================= */
+
   async function handleLogout() {
 
-    await api(
-      "/api/auth/logout",
-      {
-        method: "POST"
-      }
-    );
+    try {
+
+      await api(
+        "/api/auth/logout",
+        {
+          method: "POST"
+        }
+      );
+
+    } catch {
+      // Continue logout locally.
+    }
+
 
     setUser(null);
-
     setScan(null);
+    setError("");
   }
 
+
+  /* =========================
+     START SCAN
+  ========================= */
 
   async function startScan() {
 
     setError("");
 
-    setScan({
 
-      status:
-        "QUEUED"
+    if (!url.trim()) {
+
+      setError(
+        "Please enter a website URL."
+      );
+
+      return;
+    }
+
+
+    /*
+      Immediately show QUEUED
+      while waiting for backend.
+    */
+
+    setScan({
+      status: "QUEUED",
+      url: url
     });
 
 
@@ -304,26 +344,36 @@ export default function App() {
           "/api/scan",
 
           {
+            method: "POST",
 
-            method:
-              "POST",
-
-            body:
-              JSON.stringify({
-                url
-              })
+            body: JSON.stringify({
+              url
+            })
           }
         );
 
+
+      /*
+        Store the actual scan ID
+        returned by Railway.
+      */
 
       setScan({
 
         id:
           data.scan_id,
 
+        task_id:
+          data.task_id,
+
+        url:
+          url,
+
         status:
-          "QUEUED"
+          data.status || "QUEUED"
+
       });
+
 
     } catch (error) {
 
@@ -336,78 +386,164 @@ export default function App() {
   }
 
 
-  useEffect(
-    () => {
+  /* =========================
+     SCAN STATUS POLLING
+  ========================= */
 
-      if (!scan?.id) {
-        return;
-      }
+  useEffect(() => {
 
-
-      const interval =
-        setInterval(
-          async () => {
-
-            try {
-
-              const data =
-                await api(
-
-                  `/api/scan/${scan.id}/status`
-                );
+    if (!scan?.id) {
+      return;
+    }
 
 
-              setScan(
-                data
-              );
+    let cancelled = false;
+    let interval = null;
 
 
-              if (
+    /*
+      Function that checks the
+      current scan status.
+    */
 
-                data.status
-                === "COMPLETED"
+    const checkScanStatus =
+      async () => {
 
-                ||
+        try {
 
-                data.status
-                === "FAILED"
+          const data =
+            await api(
+              `/api/scan/${scan.id}/status`
+            );
 
-              ) {
 
-                clearInterval(
-                  interval
-                );
+          if (cancelled) {
+            return;
+          }
 
-                loadHistory();
-              }
 
-            } catch (error) {
+          /*
+            Update the entire scan
+            object with the latest
+            backend response.
+          */
 
-              setError(
-                error.message
-              );
+          setScan(
+            data
+          );
 
+
+          /*
+            Scan completed.
+          */
+
+          if (
+            data.status ===
+            "COMPLETED"
+          ) {
+
+            if (interval) {
               clearInterval(
                 interval
               );
             }
 
-          },
 
-          2000
-        );
+            await loadHistory();
+
+            return;
+          }
 
 
-      return () =>
+          /*
+            Scan failed.
+          */
+
+          if (
+            data.status ===
+            "FAILED"
+          ) {
+
+            if (interval) {
+              clearInterval(
+                interval
+              );
+            }
+
+
+            await loadHistory();
+
+            return;
+          }
+
+
+        } catch (error) {
+
+          if (cancelled) {
+            return;
+          }
+
+
+          setError(
+            error.message
+          );
+
+
+          if (interval) {
+            clearInterval(
+              interval
+            );
+          }
+        }
+      };
+
+
+    /*
+      IMPORTANT:
+      Check immediately.
+
+      Previously the frontend waited
+      2 seconds before the first request.
+    */
+
+    checkScanStatus();
+
+
+    /*
+      Continue checking every
+      2 seconds.
+    */
+
+    interval =
+      setInterval(
+        checkScanStatus,
+        2000
+      );
+
+
+    /*
+      Cleanup when scan changes
+      or component unmounts.
+    */
+
+    return () => {
+
+      cancelled = true;
+
+      if (interval) {
         clearInterval(
           interval
         );
+      }
+    };
 
-    },
 
-    [scan?.id]
-  );
+  }, [scan?.id]);
 
+
+  /* =========================
+     LOGIN PAGE
+  ========================= */
 
   if (!user) {
 
@@ -420,6 +556,7 @@ export default function App() {
           <h1>
             VulnScan Lite
           </h1>
+
 
           <p className="muted">
             Passive Web Security Scanner
@@ -532,13 +669,57 @@ export default function App() {
   }
 
 
+  /* =========================
+     RESULT DATA
+  ========================= */
+
   const result =
-    scan?.result;
+    scan?.result || null;
+
+
+  /*
+    Use result.score when available.
+
+    Fallback to scan.score because
+    the backend also returns score
+    at the top level.
+  */
+
+  const displayScore =
+    result?.score ??
+    scan?.score ??
+    null;
+
+
+  /*
+    Same fallback for grade.
+  */
+
+  const displayGrade =
+    result?.grade ??
+    scan?.grade ??
+    null;
+
+
+  /*
+    Security check arrays.
+  */
+
+  const failedChecks =
+    result?.failed_checks || [];
+
+
+  const passedChecks =
+    result?.passed_checks || [];
 
 
   return (
 
     <main className="page">
+
+      {/* =========================
+          HEADER
+      ========================= */}
 
       <header>
 
@@ -575,6 +756,10 @@ export default function App() {
       </header>
 
 
+      {/* =========================
+          SECURITY NOTICE
+      ========================= */}
+
       <div className="banner">
 
         ⚠️ Only scan websites you own
@@ -583,6 +768,10 @@ export default function App() {
 
       </div>
 
+
+      {/* =========================
+          NEW SCAN
+      ========================= */}
 
       <section className="card">
 
@@ -634,6 +823,10 @@ export default function App() {
       </section>
 
 
+      {/* =========================
+          SCAN STATUS
+      ========================= */}
+
       {scan && (
 
         <section className="card">
@@ -648,14 +841,26 @@ export default function App() {
             Status:
 
             <strong>
-              {" "}{scan.status}
+              {" "}
+              {scan.status ||
+                "QUEUED"}
             </strong>
 
           </div>
 
 
-          {(scan.status === "QUEUED"
-            || scan.status === "RUNNING") && (
+          {/* QUEUED / RUNNING */}
+
+          {(
+            scan.status ===
+              "QUEUED"
+
+            ||
+
+            scan.status ===
+              "RUNNING"
+
+          ) && (
 
             <div className="loading">
 
@@ -671,18 +876,27 @@ export default function App() {
           )}
 
 
-          {scan.status === "FAILED" && (
+          {/* FAILED */}
+
+          {scan.status ===
+            "FAILED" && (
 
             <div className="error-box">
 
-              {scan.error}
+              {scan.error ||
+                "Scan failed."}
 
             </div>
 
           )}
 
 
-          {result && (
+          {/* =========================
+              COMPLETED RESULT
+          ========================= */}
+
+          {scan.status ===
+            "COMPLETED" && (
 
             <>
 
@@ -690,7 +904,7 @@ export default function App() {
 
                 <Gauge
                   score={
-                    result.score
+                    displayScore
                   }
                 />
 
@@ -700,23 +914,33 @@ export default function App() {
                   <h2>
 
                     Grade:
+
                     {" "}
-                    {result.grade}
+
+                    {displayGrade ??
+                      "--"}
 
                   </h2>
 
+
                   <p>
-                    {result.url}
+
+                    {result?.url ||
+                      scan.url ||
+                      url}
+
                   </p>
 
+
+                  {/* PDF */}
 
                   <a
 
                     className="pdf-button"
 
                     href={
-                      `${API}/api/scan/`
-                      + `${scan.id}/pdf`
+                      `${API}/api/scan/` +
+                      `${scan.id}/pdf`
                     }
 
                     target="_blank"
@@ -734,23 +958,27 @@ export default function App() {
               </div>
 
 
+              {/* FAILED CHECKS */}
+
               <Checks
 
                 title="Failed Checks"
 
                 items={
-                  result.failed_checks
+                  failedChecks
                 }
 
               />
 
+
+              {/* PASSED CHECKS */}
 
               <Checks
 
                 title="Passed Checks"
 
                 items={
-                  result.passed_checks
+                  passedChecks
                 }
 
               />
@@ -764,6 +992,10 @@ export default function App() {
       )}
 
 
+      {/* =========================
+          SCAN HISTORY
+      ========================= */}
+
       <section className="card">
 
         <h2>
@@ -774,7 +1006,9 @@ export default function App() {
         {history.length === 0 ? (
 
           <p className="muted">
+
             No previous scans.
+
           </p>
 
         ) : (
@@ -787,17 +1021,29 @@ export default function App() {
 
                 <tr>
 
-                  <th>ID</th>
+                  <th>
+                    ID
+                  </th>
 
-                  <th>URL</th>
+                  <th>
+                    URL
+                  </th>
 
-                  <th>Score</th>
+                  <th>
+                    Score
+                  </th>
 
-                  <th>Grade</th>
+                  <th>
+                    Grade
+                  </th>
 
-                  <th>Status</th>
+                  <th>
+                    Status
+                  </th>
 
-                  <th>Date</th>
+                  <th>
+                    Date
+                  </th>
 
                 </tr>
 
@@ -807,36 +1053,51 @@ export default function App() {
               <tbody>
 
                 {history.map(
-                  scan => (
+                  scanItem => (
 
                     <tr
                       key={
-                        scan.id
+                        scanItem.id
                       }
                     >
 
                       <td>
-                        {scan.id}
+                        {scanItem.id}
                       </td>
 
-                      <td>
-                        {scan.url}
-                      </td>
 
                       <td>
-                        {scan.score ?? "-"}
+                        {scanItem.url}
                       </td>
 
-                      <td>
-                        {scan.grade ?? "-"}
-                      </td>
 
                       <td>
-                        {scan.status}
+                        {
+                          scanItem.score ??
+                          "-"
+                        }
                       </td>
 
+
                       <td>
-                        {scan.created_at}
+                        {
+                          scanItem.grade ??
+                          "-"
+                        }
+                      </td>
+
+
+                      <td>
+                        {
+                          scanItem.status
+                        }
+                      </td>
+
+
+                      <td>
+                        {
+                          scanItem.created_at
+                        }
                       </td>
 
                     </tr>
