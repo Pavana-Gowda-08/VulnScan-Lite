@@ -1178,7 +1178,7 @@ export default function App() {
               <tbody>
 
                 {history.map(
-                  scanItem => (
+                  {scanItem,index} => (
 
                     <tr
                       key={
@@ -1187,7 +1187,7 @@ export default function App() {
                     >
 
                       <td>
-                        {scanItem.id}
+                        {index + 1}
                       </td>
 
 
